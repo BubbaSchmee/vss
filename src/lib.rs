@@ -1,12 +1,12 @@
 //! VSS — Vowel Step Sequencer. A 3-band formant filter whose vowel is chosen by a tempo-synced
 //! 16-step sequencer. See SPEC.md for the full contract.
 
-mod dsp;
+pub mod dsp;
 mod editor;
-mod params;
+pub mod params;
 
 use nih_plug::prelude::*;
-use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use params::VssParams;
@@ -84,13 +84,33 @@ impl Plugin for Vss {
         &mut self,
         buffer: &mut Buffer,
         _aux: &mut AuxiliaryBuffers,
-        _context: &mut impl ProcessContext<Self>,
+        context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
-        for mut channel_samples in buffer.iter_samples() {
-            let mut samples: Vec<&mut f32> = channel_samples.iter_mut().collect();
-            self.engine.process(&mut samples);
+        let params = &self.params;
+        let transport = context.transport();
+        let step_params = params.steps_array();
+        let block = dsp::BlockParams {
+            steps: params.steps.value() as usize,
+            rate: params.rate.value(),
+            swing: params.swing.value(),
+            glide_ms: params.glide.value(),
+            pattern: std::array::from_fn(|i| step_params[i].value()),
+        };
+        self.engine
+            .begin_block(transport.playing, transport.pos_beats(), transport.tempo, &block);
+
+        for frame in buffer.iter_samples() {
+            let frame_params = dsp::FrameParams {
+                formant_shift: params.formant_shift.smoothed.next(),
+                resonance: params.resonance.smoothed.next(),
+                drive_db: params.drive.smoothed.next(),
+                mix: params.mix.smoothed.next(),
+                output_gain_db: params.output_gain.smoothed.next(),
+            };
+            self.engine.process_frame(frame, &frame_params);
         }
 
+        self.current_step.store(self.engine.current_step(), Ordering::Relaxed);
         ProcessStatus::Normal
     }
 }
