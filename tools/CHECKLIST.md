@@ -39,3 +39,9 @@ Logs:
 - which checklist item (if any) failed
 
 Note: use `py -3.12` for analyze.py. The default Python 3.14 on this machine has a broken scipy (BLAS DLL missing).
+
+## Analyzer sanity check
+
+`py -3.12 tools/analyze.py demo/vss-demo.wav --bpm 150 --rate 1/8 --steps 8` must print
+8/8 matches with automatic offset alignment (no `--offset-ms`). If it doesn't, the analyzer
+itself is broken — fix it before trusting any session WAV result.
