@@ -31,7 +31,9 @@ const VOWEL_ROWS: [(Vowel, &str); 6] = [
 /// contract owned by another agent), so it's just a fresh local size here — no window state
 /// to restore across sessions, which is fine for a fixed 760x380 window.
 pub fn create(params: Arc<VssParams>, current_step: Arc<AtomicUsize>) -> Option<Box<dyn Editor>> {
-    let egui_state = EguiState::from_size(760, 380);
+    // Grown from 380: splitting the old single control row into two (below) adds one row's
+    // worth of height above the step grid, which otherwise no longer fits vertically.
+    let egui_state = EguiState::from_size(760, 415);
 
     create_egui_editor(
         egui_state,
@@ -45,38 +47,47 @@ pub fn create(params: Arc<VssParams>, current_step: Arc<AtomicUsize>) -> Option<
                 ));
                 ui.separator();
 
+                // Split into two rows so the columns fit the 760 px window (744 px available
+                // inside CentralPanel's margins): at .with_width(80.0)/.width(80.0) each column
+                // is max(slider, label) wide (12.5 px text; "Formant Shift" ~85 px is the widest
+                // label, everything else is narrower than the 80 px slider).
+                // Row 1: 85 (Formant Shift) + 80*4 (Resonance, Drive, Glide, Swing) + 4*8 spacing
+                //       = 437 px.
                 ui.horizontal(|ui| {
                     ui.vertical(|ui| {
                         ui.label("Formant Shift");
-                        ui.add(ParamSlider::for_param(&params.formant_shift, setter));
+                        ui.add(ParamSlider::for_param(&params.formant_shift, setter).with_width(80.0));
                     });
                     ui.vertical(|ui| {
                         ui.label("Resonance");
-                        ui.add(ParamSlider::for_param(&params.resonance, setter));
+                        ui.add(ParamSlider::for_param(&params.resonance, setter).with_width(80.0));
                     });
                     ui.vertical(|ui| {
                         ui.label("Drive");
-                        ui.add(ParamSlider::for_param(&params.drive, setter));
+                        ui.add(ParamSlider::for_param(&params.drive, setter).with_width(80.0));
                     });
                     ui.vertical(|ui| {
                         ui.label("Glide");
-                        ui.add(ParamSlider::for_param(&params.glide, setter));
+                        ui.add(ParamSlider::for_param(&params.glide, setter).with_width(80.0));
                     });
                     ui.vertical(|ui| {
                         ui.label("Swing");
-                        ui.add(ParamSlider::for_param(&params.swing, setter));
+                        ui.add(ParamSlider::for_param(&params.swing, setter).with_width(80.0));
                     });
+                });
+                // Row 2: 80*4 (Mix, Output, Steps, Rate) + 3*8 spacing = 344 px.
+                ui.horizontal(|ui| {
                     ui.vertical(|ui| {
                         ui.label("Mix");
-                        ui.add(ParamSlider::for_param(&params.mix, setter));
+                        ui.add(ParamSlider::for_param(&params.mix, setter).with_width(80.0));
                     });
                     ui.vertical(|ui| {
                         ui.label("Output");
-                        ui.add(ParamSlider::for_param(&params.output_gain, setter));
+                        ui.add(ParamSlider::for_param(&params.output_gain, setter).with_width(80.0));
                     });
                     ui.vertical(|ui| {
                         ui.label("Steps");
-                        ui.add(ParamSlider::for_param(&params.steps, setter));
+                        ui.add(ParamSlider::for_param(&params.steps, setter).with_width(80.0));
                     });
                     ui.vertical(|ui| {
                         ui.label("Rate");
@@ -87,6 +98,7 @@ pub fn create(params: Arc<VssParams>, current_step: Arc<AtomicUsize>) -> Option<
                             .map(|(_, label)| *label)
                             .unwrap_or("");
                         egui::ComboBox::from_id_salt("rate_combo")
+                            .width(80.0)
                             .selected_text(current_label)
                             .show_ui(ui, |ui| {
                                 for (rate, label) in RATES {
@@ -121,8 +133,23 @@ pub fn create(params: Arc<VssParams>, current_step: Arc<AtomicUsize>) -> Option<
                                     egui::RichText::new(label)
                                 };
 
-                                let response =
-                                    ui.add(egui::SelectableLabel::new(selected, text));
+                                // Weakening the label alone leaves a selected cell's fill at full
+                                // strength (SelectableLabel paints `selection.bg_fill`), so the
+                                // cell still reads as "on" past the active step count. Scope the
+                                // visuals so a dimmed cell's selection fill/stroke match the
+                                // noninteractive (unselected) look instead, while staying clickable.
+                                let response = if dimmed {
+                                    ui.scope(|ui| {
+                                        let noninteractive =
+                                            ui.visuals().widgets.noninteractive;
+                                        ui.visuals_mut().selection.bg_fill = noninteractive.bg_fill;
+                                        ui.visuals_mut().selection.stroke = noninteractive.bg_stroke;
+                                        ui.add(egui::SelectableLabel::new(selected, text))
+                                    })
+                                    .inner
+                                } else {
+                                    ui.add(egui::SelectableLabel::new(selected, text))
+                                };
                                 if is_current_col {
                                     ui.painter().rect_stroke(
                                         response.rect,

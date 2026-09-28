@@ -203,3 +203,37 @@ fn loop_wrap_mid_block() {
         n += BLOCK;
     }
 }
+
+/// SPEC "Loop wrap": a nih-plug sub-block split by sample-accurate automation can hand
+/// `begin_block` a `pos_beats` that already extrapolated past `loop_end` even though the loop
+/// is still active. That must wrap the anchor to `start + (host - end).rem_euclid(end - start)`
+/// and keep the loop active, yielding the same steps as the already-wrapped position (checked
+/// against the same independent integer reference `loop_wrap_mid_block` uses).
+#[test]
+fn begin_block_wraps_host_position_already_past_loop_end() {
+    const LOOP_END: i64 = 3 * SAMPLES_PER_BEAT;
+    const OVERSHOOT: i64 = 1_234; // mid-block, not a step boundary
+    const BLOCK: i64 = 512;
+    let spb = steps_per_beat(Rate::Eighth);
+
+    let mut seq = Sequencer::new();
+    seq.begin_block(true, Some(host_pos(LOOP_END + OVERSHOOT)), Some(150.0), Some((0.0, 3.0)), SR);
+    for k in 0..BLOCK {
+        let got = seq.next_step(spb, 0.0, 8);
+        let want = reference(OVERSHOOT + k, 9_600, 0, 8);
+        assert_eq!(got, want, "at {k} after wrap");
+    }
+
+    // Loop must stay active (not disabled): the next block, still reported past loop_end,
+    // keeps wrapping too.
+    seq.begin_block(
+        true,
+        Some(host_pos(LOOP_END + OVERSHOOT + BLOCK)),
+        Some(150.0),
+        Some((0.0, 3.0)),
+        SR,
+    );
+    let got = seq.next_step(spb, 0.0, 8);
+    let want = reference(OVERSHOOT + BLOCK, 9_600, 0, 8);
+    assert_eq!(got, want, "loop must remain active across blocks");
+}

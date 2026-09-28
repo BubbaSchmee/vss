@@ -81,10 +81,19 @@ impl Sequencer {
         let sample_rate = sample_rate as f64;
         match pos_beats.filter(|p| playing && p.is_finite()) {
             Some(host) => {
-                self.anchor(host);
-                // A playhead already past the loop end plays straight through (no wrap).
-                self.loop_range = loop_range
-                    .filter(|&(start, end)| start.is_finite() && end > start && host < end);
+                let active_loop =
+                    loop_range.filter(|&(start, end)| start.is_finite() && end > start);
+                match active_loop {
+                    // nih-plug sub-blocks (split by sample-accurate automation) extrapolate
+                    // pos_beats linearly, so the host can report a position already past
+                    // loop_end even with the loop active. Wrap the anchor instead of dropping
+                    // the loop, so the wrapped position (not host's raw overshoot) drives steps.
+                    Some((start, end)) if host >= end => {
+                        self.anchor(start + (host - end).rem_euclid(end - start));
+                    }
+                    _ => self.anchor(host),
+                }
+                self.loop_range = active_loop;
             }
             None => {
                 if tempo != self.tempo

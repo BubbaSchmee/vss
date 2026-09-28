@@ -31,7 +31,7 @@ impl Plugin for Vss {
     const NAME: &'static str = "VSS";
     const VENDOR: &'static str = "VSS Open Source";
     const URL: &'static str = "https://github.com/BubbaSchmee/vss";
-    const EMAIL: &'static str = "info@example.com";
+    const EMAIL: &'static str = "https://github.com/BubbaSchmee/vss/issues";
 
     const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 
