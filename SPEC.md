@@ -78,8 +78,10 @@ Per channel (stereo, channels processed independently with identical coefficient
 2. Glide: the three *current* center frequencies move toward the target vowel's frequencies with a
    one-pole in the log-frequency domain, time constant = glide ms (0 ms = jump). Recompute biquad
    coefficients every 32 samples (or on any parameter change), not per sample.
-3. Sum the three band outputs weighted by the gains column, then apply a fixed makeup constant so an
-   A vowel on white noise is roughly unity RMS (document the constant).
+3. Sum the three band outputs weighted by the gains column, then apply a fixed makeup constant
+   calibrated so a full-scale (0 dBFS) 55 Hz sawtooth through vowel A at default resonance (0.5) and
+   shift 0 peaks at about 1.0. Document the constant. (Revised 2026-09-28: the earlier white-noise
+   calibration put real bass at about +10 dBFS at the defaults.)
 4. Drive: if drive > 0: `tanh(x * g) / tanh(g)` with `g = db_to_gain(drive)`, else pass-through.
 5. Mix: `dry*(1-mix) + wet*mix`. Then output_gain.
 No latency. No allocation in `process()` (assert_process_allocs will panic if violated).
@@ -97,13 +99,17 @@ Guard against denormals; reset filter state on `reset()`.
   internal beat counter advancing at host tempo (fallback 120 BPM if tempo is None). On the
   transition stopped→playing, snap to host `pos_beats`. Essential: the user auditions with the
   transport stopped.
+- Loop wrap: while playing and the host reports an active loop range, samples extrapolated past
+  `loop_end` inside a buffer map to `loop_start + overshoot`, so a loop wrap mid-buffer never plays
+  the wrong step.
 - Pattern length = `steps`; changing `steps` takes effect at the next step boundary.
 - Publish the current step index to the GUI via `Arc<AtomicUsize>`; GUI polls at repaint.
 
 ## Logging (nih_log!, always compiled, low volume)
 - On `initialize`: sample rate, max buffer size.
 - On transport play/stop change and on tempo change: state, tempo, pos_beats.
-- On each step change: step index, vowel, pos_beats (≤ 10 lines/s at 1/16 @150 BPM).
+- On each step change: step index, vowel, pos_beats — ONLY when the NIH_LOG env var is set (check
+  once in initialize, store a bool). Normal sessions must do no per-step I/O on the audio thread.
 Panics are captured by nih_plug's hook into the same NIH_LOG file.
 
 ## GUI (nih_plug_egui)
