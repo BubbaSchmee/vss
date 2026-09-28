@@ -1,0 +1,4 @@
+# Metadata for `cargo xtask bundle <package>`. See nih-plug's own bundler.toml for the format.
+
+[vss]
+name = "VSS"

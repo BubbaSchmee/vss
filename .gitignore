@@ -1,0 +1,6 @@
+/target
+sessions/*
+!sessions/.gitkeep
+*.log
+__pycache__/
+*.pyc
