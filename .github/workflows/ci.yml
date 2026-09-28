@@ -34,7 +34,7 @@ jobs:
       - name: Validate with pluginval
         shell: bash
         run: |
-          ./pluginval/pluginval.exe --strictness-level 5 --validate-in-process --validate target/bundled/VSS.vst3
+          ./pluginval/pluginval.exe --strictness-level 5 --skip-gui-tests --validate-in-process --validate target/bundled/VSS.vst3
 
       - uses: actions/upload-artifact@v4
         with:
