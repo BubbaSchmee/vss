@@ -42,7 +42,7 @@ pub fn render() -> Vec<[f32; 2]> {
     for n in 0..total {
         if n % BLOCK == 0 {
             let pos_beats = n as f64 * BPM / (60.0 * SAMPLE_RATE as f64);
-            engine.begin_block(true, Some(pos_beats), Some(BPM), &block);
+            engine.begin_block(true, Some(pos_beats), Some(BPM), None, &block);
         }
         let t = n % EIGHTH;
         let gate_len = EIGHTH * 3 / 4;
@@ -53,7 +53,8 @@ pub fn render() -> Vec<[f32; 2]> {
                 .min(1.0)
                 .min((gate_len - t) as f32 / 240.0)
         };
-        let saw = (2.0 * phase - 1.0) as f32 * 0.2 * env;
+        // 0.655 (-3.7 dBFS) puts the render at about -14 dBFS RMS with the saw-calibrated makeup.
+        let saw = (2.0 * phase - 1.0) as f32 * 0.655 * env;
         phase = (phase + 55.0 / SAMPLE_RATE as f64).fract();
 
         let mut l = saw;

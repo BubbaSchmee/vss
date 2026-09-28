@@ -126,6 +126,8 @@ pub struct Engine {
     // Last logged transport state, for change-only logging.
     logged_playing: Option<bool>,
     logged_tempo: Option<f64>,
+    /// Per-step logging, only when NIH_LOG is set (read once in `initialize`, SPEC "Logging").
+    pub log_steps: bool,
 }
 
 impl Engine {
@@ -149,6 +151,7 @@ impl Engine {
             target: None,
             logged_playing: None,
             logged_tempo: None,
+            log_steps: false,
         }
     }
 
@@ -176,6 +179,7 @@ impl Engine {
         playing: bool,
         pos_beats: Option<f64>,
         tempo: Option<f64>,
+        loop_range: Option<(f64, f64)>,
         block: &BlockParams,
     ) {
         if self.logged_playing != Some(playing) {
@@ -204,7 +208,7 @@ impl Engine {
         }
 
         self.sequencer
-            .begin_block(playing, pos_beats, tempo, self.sample_rate);
+            .begin_block(playing, pos_beats, tempo, loop_range, self.sample_rate);
         self.block = *block;
         self.steps_per_beat = steps_per_beat(block.rate);
         for filter in &mut self.filters {
@@ -229,13 +233,15 @@ impl Engine {
         if self.last_step != Some(step) {
             self.last_step = Some(step);
             self.retarget(step);
-            rt_log!(
-                "step: index={} vowel={:?} ({:?}) pos_beats={:.4}",
-                step,
-                self.block.pattern[step],
-                self.target.unwrap_or(Vowel::A),
-                self.sequencer.beat()
-            );
+            if self.log_steps {
+                rt_log!(
+                    "step: index={} vowel={:?} ({:?}) pos_beats={:.4}",
+                    step,
+                    self.block.pattern[step],
+                    self.target.unwrap_or(Vowel::A),
+                    self.sequencer.beat()
+                );
+            }
         }
 
         self.drive.set_db(p.drive_db);

@@ -43,7 +43,7 @@ fn run(
     const BLOCK: i64 = 437;
     let mut n = first_sample;
     while n < first_sample + len {
-        seq.begin_block(playing, Some(host_pos(n)), Some(150.0), SR);
+        seq.begin_block(playing, Some(host_pos(n)), Some(150.0), None, SR);
         for k in n..(n + BLOCK).min(first_sample + len) {
             check(k, seq.next_step(steps_per_beat(rate), swing, steps));
         }
@@ -94,7 +94,7 @@ fn free_runs_at_host_tempo_when_stopped() {
         let mut n0 = 0i64;
         const BLOCK: i64 = 300;
         while n0 < 8 * SAMPLES_PER_BEAT {
-            seq.begin_block(false, Some(1234.5), Some(150.0), SR);
+            seq.begin_block(false, Some(1234.5), Some(150.0), None, SR);
             for n in n0..n0 + BLOCK {
                 let got = seq.next_step(steps_per_beat(rate), 0.5, 16);
                 assert_eq!(
@@ -113,7 +113,7 @@ fn free_runs_at_host_tempo_when_stopped() {
 #[test]
 fn free_run_falls_back_to_120_bpm() {
     let mut seq = Sequencer::new();
-    seq.begin_block(false, None, None, SR);
+    seq.begin_block(false, None, None, None, SR);
     // 120 BPM at 48 kHz: 24 000 samples per beat, 12 000 per 1/8.
     for n in 0..48_000i64 {
         let got = seq.next_step(steps_per_beat(Rate::Eighth), 0.0, 16);
@@ -145,7 +145,7 @@ fn snaps_to_host_position_on_play() {
     let resume = start + 4 * SAMPLES_PER_BEAT;
     let mut n = resume;
     for _ in 0..40 {
-        seq.begin_block(false, Some(0.0), Some(150.0), SR);
+        seq.begin_block(false, Some(0.0), Some(150.0), None, SR);
         for _ in 0..512 {
             let got = seq.next_step(steps_per_beat(rate), 0.0, 16);
             assert_eq!(
@@ -162,7 +162,7 @@ fn snaps_to_host_position_on_play() {
 fn steps_change_applies_at_next_boundary() {
     let mut seq = Sequencer::new();
     let spb = steps_per_beat(Rate::Eighth);
-    seq.begin_block(true, Some(0.0), Some(150.0), SR);
+    seq.begin_block(true, Some(0.0), Some(150.0), None, SR);
     for _ in 0..(3 * 9_600 + 100) {
         seq.next_step(spb, 0.0, 8);
     }
@@ -177,4 +177,29 @@ fn steps_change_applies_at_next_boundary() {
         seq.next_step(spb, 0.0, 2);
     }
     assert_eq!(seq.current(), 1);
+}
+
+/// SPEC "Loop wrap": 3-beat host loop at 150 BPM / 48 kHz, 1/8, 8 steps, 512-sample blocks. The
+/// loop end (57 600 samples) falls mid-block; samples past it must follow the wrapped position.
+#[test]
+fn loop_wrap_mid_block() {
+    const LOOP_END: i64 = 3 * SAMPLES_PER_BEAT;
+    const BLOCK: i64 = 512;
+    assert_ne!(LOOP_END % BLOCK, 0, "loop end must fall inside a block");
+    let spb = steps_per_beat(Rate::Eighth);
+    let mut seq = Sequencer::new();
+    let mut n = 0i64; // continuous sample count; the host reports the looped position
+    while n < 4 * LOOP_END {
+        let host = host_pos(n.rem_euclid(LOOP_END));
+        seq.begin_block(true, Some(host), Some(150.0), Some((0.0, 3.0)), SR);
+        for k in n..n + BLOCK {
+            let looped = k.rem_euclid(LOOP_END);
+            let got = seq.next_step(spb, 0.0, 8);
+            assert_eq!(got, reference(looped, 9_600, 0, 8), "at {k} (loop pos {looped})");
+            if looped == 0 && k > 0 {
+                assert_eq!(got, 0, "first sample after loop end at {k}");
+            }
+        }
+        n += BLOCK;
+    }
 }

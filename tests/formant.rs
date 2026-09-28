@@ -50,13 +50,27 @@ fn filter_for(vowel: Vowel, resonance: f32) -> impl FnMut(f32) -> f32 {
     move |x| filter.process(x, 0.0, resonance)
 }
 
+/// SPEC.md vowel table (F1, F2, F3 Hz), hard-coded so a typo in `params.rs` fails the tests.
+const SPEC_TABLE: [(Vowel, [f32; 3]); 5] = [
+    (Vowel::A, [730.0, 1090.0, 2440.0]),
+    (Vowel::E, [530.0, 1840.0, 2480.0]),
+    (Vowel::I, [270.0, 2290.0, 3010.0]),
+    (Vowel::O, [570.0, 840.0, 2410.0]),
+    (Vowel::U, [300.0, 870.0, 2240.0]),
+];
+
 fn table(vowel: Vowel) -> [(f64, f64); 3] {
-    let f = vowel_formants(vowel);
-    [
-        (f.f1 as f64, 0.05),
-        (f.f2 as f64, 0.05),
-        (f.f3 as f64, 0.08),
-    ]
+    let f = SPEC_TABLE.iter().find(|(v, _)| *v == vowel).unwrap().1;
+    [(f[0] as f64, 0.05), (f[1] as f64, 0.05), (f[2] as f64, 0.08)]
+}
+
+#[test]
+fn vowel_table_matches_spec() {
+    for (vowel, [f1, f2, f3]) in SPEC_TABLE {
+        let f = vowel_formants(vowel);
+        assert_eq!([f.f1, f.f2, f.f3], [f1, f2, f3], "{vowel:?}");
+        assert_eq!(f.gains, [0.0, -6.0, -12.0], "{vowel:?}");
+    }
 }
 
 /// SPEC stimulus: 55 Hz saw, 2 s, 48 kHz, glide 0, shift 0, resonance 0.7; Goertzel over +-10 %.
@@ -68,9 +82,7 @@ fn table(vowel: Vowel) -> [(f64, f64); 3] {
 /// continuous response at every formant with the literal tolerances.
 #[test]
 fn formant_peaks_saw() {
-    let saw: Vec<f32> = (0..2 * SR as usize)
-        .map(|n| (2.0 * (n as f64 * 55.0 / SR).fract() - 1.0) as f32)
-        .collect();
+    let saw = saw(2 * SR as usize);
     for vowel in VOWELS {
         let mut f = filter_for(vowel, 0.7);
         let y: Vec<f32> = saw.iter().map(|&x| f(x)).collect();
@@ -115,33 +127,31 @@ fn formant_peaks_impulse_response() {
     }
 }
 
-fn noise(len: usize) -> Vec<f32> {
-    let mut state = 0x2545_f491_4f6c_dd1du64;
-    (0..len)
-        .map(|_| {
-            state ^= state << 13;
-            state ^= state >> 7;
-            state ^= state << 17;
-            (state >> 11) as f64 / (1u64 << 53) as f64 * 2.0 - 1.0
-        })
-        .map(|v| v as f32)
-        .collect()
-}
-
 fn rms(x: &[f32]) -> f64 {
     (x.iter().map(|&v| v as f64 * v as f64).sum::<f64>() / x.len() as f64).sqrt()
 }
 
-/// The documented makeup constant: A vowel, resonance 0.5, white noise -> roughly unity RMS.
+fn saw(len: usize) -> Vec<f32> {
+    (0..len)
+        .map(|n| (2.0 * (n as f64 * 55.0 / SR).fract() - 1.0) as f32)
+        .collect()
+}
+
+/// Peak of a 0 dBFS 55 Hz saw (2 s) through vowel A, shift 0, glide 0, skipping 0.1 s of settling.
+fn saw_peak(resonance: f32) -> f32 {
+    let mut f = filter_for(Vowel::A, resonance);
+    let y: Vec<f32> = saw(2 * SR as usize).iter().map(|&x| f(x)).collect();
+    y[SR as usize / 10..].iter().fold(0.0, |m, v| m.max(v.abs()))
+}
+
+/// The documented makeup constant (SPEC DSP step 3): 0 dBFS saw at the defaults peaks at ~1.0.
+/// Measured 1.0004 at resonance 0.5; resonance 1.0 narrows the bands and peaks at ~0.35.
 #[test]
-fn makeup_gives_unity_rms_on_white_noise() {
-    let x = noise(10 * SR as usize);
-    let mut f = filter_for(Vowel::A, 0.5);
-    let y: Vec<f32> = x.iter().map(|&v| f(v)).collect();
-    let skip = SR as usize / 10;
-    let ratio = rms(&y[skip..]) / rms(&x[skip..]);
-    println!("A / white noise RMS ratio with makeup: {ratio:.4}");
-    assert!((20.0 * ratio.log10()).abs() < 0.5, "ratio {ratio}");
+fn makeup_gives_unity_peak_on_full_scale_saw() {
+    let (p05, p10) = (saw_peak(0.5), saw_peak(1.0));
+    println!("0 dBFS saw peak: resonance 0.5 {p05:.4}, resonance 1.0 {p10:.4}");
+    assert!((0.9..1.1).contains(&p05), "resonance 0.5 peak {p05}");
+    assert!(p10 < 2.0, "resonance 1.0 peak {p10}");
 }
 
 #[test]

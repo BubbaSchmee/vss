@@ -4,7 +4,8 @@
 //! by accumulating a per-sample increment, so boundaries land on the exact sample (e.g. 150 BPM at
 //! 48 kHz puts 1/8 boundaries on multiples of 9600 with no drift). While the host plays, the
 //! anchor is the host's `pos_beats` at each block start (this also covers the stopped->playing
-//! snap and loop jumps); while stopped, the internal counter free-runs at host tempo.
+//! snap and loop jumps); while stopped, the internal counter free-runs at host tempo. With an
+//! active host loop, beats extrapolated past `loop_end` within a block wrap to `loop_start`.
 
 use crate::params::Rate;
 
@@ -38,6 +39,8 @@ pub struct Sequencer {
     /// Pattern length in effect; a new `steps` value is latched only at a step boundary.
     steps_active: i64,
     current: usize,
+    /// Host loop `(start, end)` in beats, only while playing with the block start before `end`.
+    loop_range: Option<(f64, f64)>,
 }
 
 impl Sequencer {
@@ -51,6 +54,7 @@ impl Sequencer {
             last_abs_step: None,
             steps_active: 1,
             current: 0,
+            loop_range: None,
         }
     }
 
@@ -64,22 +68,33 @@ impl Sequencer {
     }
 
     /// Call once at the start of every processing block with the host transport.
+    /// `loop_range` is `Transport::loop_range_beats()` (`Some` only while the host loop is active).
     pub fn begin_block(
         &mut self,
         playing: bool,
         pos_beats: Option<f64>,
         tempo: Option<f64>,
+        loop_range: Option<(f64, f64)>,
         sample_rate: f32,
     ) {
         let tempo = tempo.filter(|t| t.is_finite() && *t > 0.0).unwrap_or(120.0);
         let sample_rate = sample_rate as f64;
         match pos_beats.filter(|p| playing && p.is_finite()) {
-            Some(host) => self.anchor(host),
+            Some(host) => {
+                self.anchor(host);
+                // A playhead already past the loop end plays straight through (no wrap).
+                self.loop_range = loop_range
+                    .filter(|&(start, end)| start.is_finite() && end > start && host < end);
+            }
             None => {
-                if tempo != self.tempo || sample_rate != self.sample_rate {
-                    // Keep the position, change the speed from here on.
+                if tempo != self.tempo
+                    || sample_rate != self.sample_rate
+                    || self.loop_range.is_some()
+                {
+                    // Keep the (wrapped) position, change the speed from here on.
                     let now = self.beat_at(self.since_anchor);
                     self.anchor(now);
+                    self.loop_range = None;
                 }
             }
         }
@@ -126,7 +141,11 @@ impl Sequencer {
 
     #[inline]
     fn beat_at(&self, n: u64) -> f64 {
-        self.anchor_beat + n as f64 * self.tempo / (60.0 * self.sample_rate)
+        let beat = self.anchor_beat + n as f64 * self.tempo / (60.0 * self.sample_rate);
+        match self.loop_range {
+            Some((start, end)) if beat >= end => start + (beat - end).rem_euclid(end - start),
+            _ => beat,
+        }
     }
 }
 

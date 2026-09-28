@@ -11,14 +11,12 @@ use crate::params::VowelFormants;
 /// Coefficient recompute cadence in samples (SPEC: every 32 samples).
 const UPDATE_INTERVAL: u32 = 32;
 
-/// Fixed makeup gain applied to the summed bands so an `A` vowel on white noise comes out at
-/// roughly unity RMS. Measured (see `tests/formant.rs::makeup_gives_unity_rms_on_white_noise`):
-/// `A` vowel, resonance 0.5 (Q = 2*10^0.5 ~= 6.32), shift 0, 48 kHz, uniform white noise ->
-/// raw output/input RMS ratio 0.1138, so makeup = 1/0.1138 ~= 8.78 (+18.9 dB). It is not
-/// re-derived per Q or sample rate: higher resonance narrows the bands and reads quieter on noise
-/// (louder on a harmonic that sits on a formant), and doubling the sample rate reads ~3 dB quieter
-/// on noise of the same variance.
-pub const MAKEUP: f64 = 8.78;
+/// Fixed makeup gain applied to the summed bands (SPEC DSP step 3): a full-scale (0 dBFS) 55 Hz
+/// sawtooth through vowel `A`, resonance 0.5 (Q = 2*10^0.5 ~= 6.32), shift 0, glide 0, 48 kHz peaks
+/// at about 1.0. Measured (see `tests/formant.rs::makeup_gives_unity_peak_on_full_scale_saw`): raw
+/// summed-band peak 0.37330 after settling, so makeup = 1/0.37330 ~= 2.68 (+8.6 dB). Not re-derived
+/// per Q: on this saw, higher resonance narrows the bands and peaks lower (resonance 1.0 -> ~0.35).
+pub const MAKEUP: f64 = 2.68;
 
 /// Band outputs below this magnitude are flushed to zero (denormal guard; nih-plug
 /// also enables FTZ around `process()`, this covers the tests/demo and any host that doesn't).

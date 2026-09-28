@@ -72,6 +72,7 @@ impl Plugin for Vss {
             .map(|c| c.get() as usize)
             .unwrap_or(2);
         self.engine.set_sample_rate(buffer_config.sample_rate, num_channels);
+        self.engine.log_steps = std::env::var_os("NIH_LOG").is_some();
 
         true
     }
@@ -96,8 +97,13 @@ impl Plugin for Vss {
             glide_ms: params.glide.value(),
             pattern: std::array::from_fn(|i| step_params[i].value()),
         };
-        self.engine
-            .begin_block(transport.playing, transport.pos_beats(), transport.tempo, &block);
+        self.engine.begin_block(
+            transport.playing,
+            transport.pos_beats(),
+            transport.tempo,
+            transport.loop_range_beats(),
+            &block,
+        );
 
         for frame in buffer.iter_samples() {
             let frame_params = dsp::FrameParams {
