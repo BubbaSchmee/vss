@@ -15,8 +15,9 @@ first for a clean log.
 ## Steps
 
 1. Live > Preferences > Plug-Ins > set "Use VST3 Plug-In Custom Folder" to
-   `D:\cargo-target\vss\bundled` (no admin needed). Rebuilds are picked up
-   on the next rescan, no re-copy step.
+   `C:\Users\kolby\Documents\Ableton\Custom Plugins` (no admin needed). The
+   built bundle is copied there from `D:\cargo-target\vss\bundled\VSS.vst3`;
+   after a rebuild, re-copy it and rescan.
 2. Live > Preferences > Plug-Ins > Rescan.
 3. Launch Live via `tools/live-debug.bat` (sets `NIH_LOG`, prints the log path).
 4. New MIDI track. Load Serum 2, init saw patch.
