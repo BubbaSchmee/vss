@@ -85,13 +85,16 @@ impl Link {
         }
     }
 
-    /// GUI thread: renames the instance and persists the label.
+    /// GUI thread: renames the instance and persists the label the bus actually took (rr-bus
+    /// keeps labels unique, so a duplicated track's copy may become `"<label> (2)"`).
     pub fn set_label(&self, label: &str) {
+        let mut live = String::new();
         if let Some(i) = lock(&self.instance).as_ref() {
             i.set_label(label);
+            live = i.label();
         }
         if let Ok(mut l) = self.params.instance_label.write() {
-            *l = label.to_string();
+            *l = if live.is_empty() { label.to_string() } else { live };
         }
     }
 
@@ -118,8 +121,9 @@ impl Link {
         }
     }
 
-    /// GUI thread, ~4x/s: re-resolves lost subscriptions and keeps the instance's heartbeat fresh
-    /// while the host is not processing.
+    /// GUI thread (~4x/s while the editor is open) and background task (~4x/s from `process`):
+    /// re-resolves lost subscriptions and keeps the instance's heartbeat fresh while the host is
+    /// not processing.
     pub fn refresh(&self) {
         for slot in &self.slots {
             if let Ok(g) = slot.sub.read() {
@@ -153,6 +157,8 @@ pub struct Modulator {
     goal: [f32; SLOTS],
     smooth: [f32; SLOTS],
     coef: f32,
+    /// Samples since `process` last scheduled a background [`Link::refresh`].
+    since_refresh: usize,
 }
 
 struct Registered {
@@ -164,19 +170,27 @@ struct Registered {
 
 impl Modulator {
     pub fn new(link: Arc<Link>) -> Self {
-        Self { link, reg: None, last: [0.0; SLOTS], goal: [0.0; SLOTS], smooth: [0.0; SLOTS], coef: 1.0 }
+        Self { link, reg: None, last: [0.0; SLOTS], goal: [0.0; SLOTS], smooth: [0.0; SLOTS], coef: 1.0, since_refresh: 0 }
     }
 
     pub fn link(&self) -> &Arc<Link> {
         &self.link
     }
 
-    /// Host thread, from `initialize`: opens the session bus, (re-)registers and binds the
-    /// persisted sources. Allocates.
+    /// Host thread, from `initialize` (which the host re-runs on every activation and after every
+    /// state load): registers once and keeps that record, so subscribers to this instance stay
+    /// bound; re-applies the persisted label and binds the persisted sources. Allocates.
     pub fn initialize(&mut self, bus: Bus) {
-        self.drop_registration(); // frees the old record first so the label can be reused
-        self.link.set_bus(bus);
-        self.register();
+        if self.reg.as_ref().is_some_and(|r| r.inst.is_enabled()) {
+            let saved = self.link.params.instance_label.read().map(|l| l.clone()).unwrap_or_default();
+            if !saved.is_empty() {
+                self.link.set_label(&saved);
+            }
+        } else {
+            self.drop_registration(); // frees a stale record first so the label can be reused
+            self.link.set_bus(bus);
+            self.register();
+        }
         self.link.bind_persisted();
         self.smooth = [0.0; SLOTS];
         self.goal = [0.0; SLOTS];
@@ -200,10 +214,15 @@ impl Modulator {
         let bus = self.link.bus();
         let inst = Arc::new(bus.register("VSS"));
         let saved = self.link.params.instance_label.read().map(|l| l.clone()).unwrap_or_default();
-        if saved.is_empty() {
-            self.link.set_label(&inst.label()); // persist the default so a saved set re-resolves it
-        } else {
+        if !saved.is_empty() {
             inst.set_label(&saved);
+        }
+        // Persist the default (or the de-duplicated saved label) so a saved set re-resolves it.
+        let live = inst.label();
+        if !live.is_empty() && live != saved {
+            if let Ok(mut l) = self.link.params.instance_label.write() {
+                *l = live;
+            }
         }
         let reg = Registered {
             gate: inst.publish("Step Gate", Kind::Gate),
@@ -227,6 +246,18 @@ impl Modulator {
             self.goal[i] = if targets[i] == CvTarget::Off { 0.0 } else { amounts[i] * raw };
         }
         self.coef = 1.0 - (-1.0 / (SMOOTH_MS * 0.001 * sample_rate.max(1.0))).exp();
+    }
+
+    /// Audio thread, once per block of `n` samples: true about every 250 ms, when `process`
+    /// should schedule a background [`Link::refresh`] (lost sources must re-resolve without the
+    /// editor being open).
+    pub fn refresh_due(&mut self, n: usize, sample_rate: f32) -> bool {
+        self.since_refresh += n;
+        let due = self.since_refresh as f32 >= 0.25 * sample_rate;
+        if due {
+            self.since_refresh = 0;
+        }
+        due
     }
 
     /// Audio thread, once per block after processing: publish `(Step Gate, Vowel, Step)`.

@@ -10,6 +10,12 @@ The GUI uses the shared `rr-ui` kit (Riddim Rack look); window 1064×560. VSS jo
 modulation bus (`rr-bus`): it publishes Step Gate, Vowel and Step, and has three CV-in slots in the
 PATCH strip that modulate Formant Shift, Resonance, Drive, Glide or Mix.
 
+Modulation bus, in plain words: the PATCH rows are source | target | amount | activity LED. The
+instance label (editable, committed on Enter or focus loss) is part of every source name, e.g.
+`Lead · Step Gate`, so name instances before patching. The bus is control-rate (once per audio block),
+not audio. If an instance vanishes its signals are reclaimed after 2 s and rows bound to it show the
+name dimmed until it returns.
+
 Copyright (C) 2026 VSS Open Source contributors
 
 This program is free software: you can redistribute it and/or modify it

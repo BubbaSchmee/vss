@@ -54,6 +54,12 @@ impl Plugin for Vss {
     type SysExMessage = ();
     type BackgroundTask = ();
 
+    fn task_executor(&mut self) -> TaskExecutor<Self> {
+        // The one background task: refresh the bus bindings (see bus::Link::refresh).
+        let link = self.modulator.link().clone();
+        Box::new(move |()| link.refresh())
+    }
+
     fn params(&self) -> Arc<dyn Params> {
         self.params.clone()
     }
@@ -107,6 +113,9 @@ impl Plugin for Vss {
         let amounts = params.cv_amounts().map(|a| a.value());
         // Read the CV-in slots once per block; offsets are smoothed per sample below.
         self.modulator.begin_block(targets, amounts, self.sample_rate);
+        if self.modulator.refresh_due(buffer.samples(), self.sample_rate) {
+            context.execute_background(());
+        }
         let glide_off = target_offsets(targets, self.modulator.current())[CvTarget::Glide.to_index()];
         let block = dsp::BlockParams {
             steps: params.steps.value() as usize,

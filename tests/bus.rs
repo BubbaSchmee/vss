@@ -272,3 +272,21 @@ fn step_gate_follows_swing() {
     assert!(seq.step_phase() >= 0.5, "{}", seq.step_phase());
     assert_eq!(seq.steps_active(), 8);
 }
+
+#[test]
+fn re_initialize_keeps_the_record_so_subscribers_stay_bound() {
+    let bus = bus();
+    let mut rig = rig(&bus);
+    let label = rig.link.label();
+    let gate = Subscription::bind(&bus, &label, "Step Gate");
+    rig.m.publish((1.0, 0.0, 0.0));
+    assert_eq!(gate.read(), Some(1.0));
+    // setActive(true) after a sample-rate change, or a preset load: the host re-runs initialize.
+    *rig.params.instance_label.write().unwrap() = "Chop".into();
+    rig.m.initialize(bus.clone());
+    rig.m.publish((0.0, 0.0, 0.0));
+    assert_eq!(gate.read(), Some(0.0), "same record and slots: no rebind needed");
+    assert!(!gate.is_lost());
+    assert_eq!(rig.link.label(), "Chop");
+    assert_eq!(bus.list().len(), 3);
+}

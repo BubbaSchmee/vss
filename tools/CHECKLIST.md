@@ -20,9 +20,9 @@ first for a clean log.
    after a rebuild, re-copy it and rescan.
 2. Live > Preferences > Plug-Ins > Rescan.
 3. Launch Live via `tools/live-debug.bat` (sets `NIH_LOG`, prints the log path).
-4. New MIDI track. Load Serum 2, init saw patch.
+4. New MIDI track. Load a bass synth (or GTS) with an init saw patch.
 5. 8-bar clip on that track holding one sustained low note.
-6. Add VSS after Serum on the same track.
+6. Add VSS after the synth on the same track.
 7. Set project tempo to 150 BPM.
 
 ## Checks (expected result)
