@@ -253,6 +253,8 @@ fn patch_label_edit_renames_the_instance() {
         modifiers: Modifiers::COMMAND,
     }]);
     h.frame(vec![Event::Text("Lead".into())]);
+    let enter = |pressed| Event::Key { key: egui::Key::Enter, physical_key: None, pressed, repeat: false, modifiers: Modifiers::NONE };
+    h.frame(vec![enter(true), enter(false)]); // the label commits on Enter/blur, not per keystroke
     h.frame(vec![]);
     assert_eq!(h.link.label(), "Lead");
     assert_eq!(h.link.persisted_sources(), [String::new(), String::new(), String::new()]);

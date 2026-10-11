@@ -290,3 +290,36 @@ fn re_initialize_keeps_the_record_so_subscribers_stay_bound() {
     assert_eq!(rig.link.label(), "Chop");
     assert_eq!(bus.list().len(), 3);
 }
+
+#[test]
+fn nan_on_the_bus_reads_zero_then_recovers() {
+    let bus = bus();
+    let publisher = bus.register("GTS");
+    let src = publisher.publish("Ramp", Kind::Unipolar);
+    let mut rig = rig(&bus);
+    rig.link.bind(0, "GTS 1 \u{b7} Ramp");
+    rig.targets[0] = CvTarget::Resonance;
+    rig.amounts[0] = 0.25;
+    src.set(f32::NAN);
+    assert!(rig.run(BLOCK * 4).is_finite());
+    assert_eq!(rig.link.activity(0), 0.0);
+    src.set(1.0);
+    let settled = rig.run((0.005 * SR) as usize * 6);
+    assert!((settled - 0.25).abs() < 1e-3, "{settled}");
+}
+
+#[test]
+fn renamed_publisher_is_re_persisted_and_the_binding_survives() {
+    let bus = bus();
+    let publisher = bus.register("GTS");
+    let src = publisher.publish("Ramp", Kind::Unipolar);
+    let rig = rig(&bus);
+    rig.link.bind(0, "GTS 1 \u{b7} Ramp");
+    publisher.set_label("Lead");
+    rig.link.refresh();
+    assert_eq!(rig.link.persisted_sources()[0], "Lead \u{b7} Ramp");
+    assert!(rig.link.is_bound(0));
+    src.set(0.5);
+    rig.link.refresh();
+    assert!(rig.link.is_bound(0));
+}

@@ -36,7 +36,7 @@ impl Default for Vss {
 
 impl Plugin for Vss {
     const NAME: &'static str = "VSS";
-    const VENDOR: &'static str = "VSS Open Source";
+    const VENDOR: &'static str = "Riddim Rack Open Source";
     const URL: &'static str = "https://github.com/BubbaSchmee/vss";
     const EMAIL: &'static str = "https://github.com/BubbaSchmee/vss/issues";
 
@@ -114,6 +114,10 @@ impl Plugin for Vss {
         // Read the CV-in slots once per block; offsets are smoothed per sample below.
         self.modulator.begin_block(targets, amounts, self.sample_rate);
         if self.modulator.refresh_due(buffer.samples(), self.sample_rate) {
+            // Rate-limited here: a reclaimed-and-reused record otherwise only recovers on reset().
+            if self.modulator.needs_register() {
+                nih_plug::util::permit_alloc(|| self.modulator.ensure_registered());
+            }
             context.execute_background(());
         }
         let glide_off = target_offsets(targets, self.modulator.current())[CvTarget::Glide.to_index()];

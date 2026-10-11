@@ -39,7 +39,7 @@ into slider text boxes may not receive keystrokes in Live).
 14. Save the set, close, reopen: pattern and knob values are unchanged.
 15. Automate Formant Shift: moves with no clicks/zipper noise.
 16. Resample 8 bars to a new audio track, export WAV into `sessions/`, named
-    `YYYY-MM-DD-serum-150-1-8.wav`.
+    `YYYY-MM-DD-synth-150-1-8.wav`.
 17. Run:
     ```
     py -3.12 tools/analyze.py sessions/<file> --bpm 150 --rate 1/8 --steps 8

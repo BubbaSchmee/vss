@@ -200,7 +200,7 @@ dependencies = [
  "objc2-foundation 0.3.2",
  "parking_lot",
  "percent-encoding",
- "windows-sys 0.59.0",
+ "windows-sys 0.52.0",
  "x11rb",
 ]
 
@@ -2991,7 +2991,7 @@ checksum = "19b30a45b0cd0bcca8037f3d0dc3421eaf95327a17cad11964fb8179b4fc4832"
 [[package]]
 name = "rr-bus"
 version = "0.1.0"
-source = "git+https://github.com/BubbaSchmee/riddim-rack.git?rev=e6511ba#e6511baeac1d88b1ade9da9492d067d7470a7bbc"
+source = "git+https://github.com/BubbaSchmee/riddim-rack.git?rev=2ea76d5#2ea76d565347e06aae8fa3e380bc2b9059f02314"
 dependencies = [
  "windows-sys 0.59.0",
 ]
@@ -2999,7 +2999,7 @@ dependencies = [
 [[package]]
 name = "rr-ui"
 version = "0.1.0"
-source = "git+https://github.com/BubbaSchmee/riddim-rack.git?rev=e6511ba#e6511baeac1d88b1ade9da9492d067d7470a7bbc"
+source = "git+https://github.com/BubbaSchmee/riddim-rack.git?rev=2ea76d5#2ea76d565347e06aae8fa3e380bc2b9059f02314"
 dependencies = [
  "egui",
 ]
@@ -3041,7 +3041,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.4.15",
- "windows-sys 0.59.0",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]

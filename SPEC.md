@@ -95,7 +95,7 @@ Guard against denormals; reset filter state on `reset()`.
 - Step index = `floor(beat / step_len) mod steps`, with swing: every odd step (1,3,5.. zero-based)
   starts later by `swing * step_len / 3`. Implement as: within each 2-step pair, the boundary sits at
   `step_len + swing*step_len/3` instead of `step_len`.
-- Free-run: when `playing == false` (Live transport stopped, user jamming Serum live), keep an
+- Free-run: when `playing == false` (Live transport stopped, the user auditioning a synth live), keep an
   internal beat counter advancing at host tempo (fallback 120 BPM if tempo is None). On the
   transition stopped→playing, snap to host `pos_beats`. Essential: the user auditions with the
   transport stopped.

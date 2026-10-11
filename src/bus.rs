@@ -90,8 +90,7 @@ impl Link {
     pub fn set_label(&self, label: &str) {
         let mut live = String::new();
         if let Some(i) = lock(&self.instance).as_ref() {
-            i.set_label(label);
-            live = i.label();
+            live = i.set_label(label);
         }
         if let Ok(mut l) = self.params.instance_label.write() {
             *l = if live.is_empty() { label.to_string() } else { live };
@@ -125,15 +124,37 @@ impl Link {
     /// re-resolves lost subscriptions and keeps the instance's heartbeat fresh while the host is
     /// not processing.
     pub fn refresh(&self) {
-        for slot in &self.slots {
-            if let Ok(g) = slot.sub.read() {
-                if let Some(s) = g.as_ref() {
-                    s.rebind_if_lost();
+        if let Some(i) = lock(&self.instance).as_ref() {
+            i.heartbeat();
+            // A record resurrected by the heartbeat may clash with a label taken meanwhile.
+            let l = i.label();
+            if !l.is_empty() {
+                let got = i.set_label(&l);
+                if !got.is_empty() && got != l {
+                    if let Ok(mut p) = self.params.instance_label.write() {
+                        *p = got;
+                    }
                 }
             }
         }
-        if let Some(i) = lock(&self.instance).as_ref() {
-            i.heartbeat();
+        let bus = self.bus();
+        for (slot, i) in self.slots.iter().zip(0..) {
+            let mut stale = None;
+            if let Ok(g) = slot.sub.read() {
+                if let Some(s) = g.as_ref() {
+                    s.rebind_if_lost();
+                    // Publisher renamed: re-persist so a saved set re-resolves it.
+                    stale = s.live_persisted().filter(|l| *l != s.persisted());
+                }
+            }
+            if let Some(live) = stale {
+                let new = Some(Subscription::bind_persisted(&bus, &live));
+                let old = std::mem::replace(&mut *slot.sub.write().unwrap_or_else(|e| e.into_inner()), new);
+                drop(old);
+                if let Ok(mut s) = self.params.cv_sources.write() {
+                    s[i] = live;
+                }
+            }
         }
     }
 
@@ -203,6 +224,11 @@ impl Modulator {
             self.drop_registration();
             self.register();
         }
+    }
+
+    /// True when the instance record is gone (bus enabled but not registered).
+    pub fn needs_register(&self) -> bool {
+        self.link.bus().is_enabled() && !self.reg.as_ref().is_some_and(|r| r.inst.is_enabled())
     }
 
     fn drop_registration(&mut self) {
