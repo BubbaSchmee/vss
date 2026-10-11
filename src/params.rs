@@ -4,6 +4,7 @@
 //! keep them exact. Parameter ids are stable and must never be renamed.
 
 use nih_plug::prelude::*;
+use std::sync::RwLock;
 
 /// Tempo-synced step rate. Display strings match the SPEC exactly.
 #[derive(Enum, Debug, PartialEq, Clone, Copy)]
@@ -111,6 +112,21 @@ pub const DEFAULT_PATTERN: [Vowel; 16] = [
     Vowel::A,
 ];
 
+/// What a CV-in slot modulates (RR-BUS, SPEC "Bus"). `Off` must stay first: it is the default.
+#[derive(Enum, Debug, PartialEq, Clone, Copy)]
+pub enum CvTarget {
+    Off,
+    #[name = "Formant Shift"]
+    FormantShift,
+    Resonance,
+    Drive,
+    Glide,
+    Mix,
+}
+
+/// Short names for the PATCH strip target combo, in `CvTarget` order.
+pub const CV_TARGET_LABELS: [&str; 6] = ["Off", "Formant", "Reson.", "Drive", "Glide", "Mix"];
+
 #[derive(Params)]
 pub struct VssParams {
     #[id = "formant_shift"]
@@ -172,9 +188,40 @@ pub struct VssParams {
 
     #[id = "output_gain"]
     pub output_gain: FloatParam,
+
+    // RR-BUS CV-in slots. Ids are stable. Amount is bipolar -1..1 (default 0 = no modulation).
+    #[id = "cv1_target"]
+    pub cv1_target: EnumParam<CvTarget>,
+    #[id = "cv1_amount"]
+    pub cv1_amount: FloatParam,
+    #[id = "cv2_target"]
+    pub cv2_target: EnumParam<CvTarget>,
+    #[id = "cv2_amount"]
+    pub cv2_amount: FloatParam,
+    #[id = "cv3_target"]
+    pub cv3_target: EnumParam<CvTarget>,
+    #[id = "cv3_amount"]
+    pub cv3_amount: FloatParam,
+
+    /// Persisted `"<label> · <name>"` per CV-in slot; empty = no source.
+    #[persist = "cv_sources"]
+    pub cv_sources: RwLock<[String; 3]>,
+    /// The bus instance label (empty until the first registration names it).
+    #[persist = "instance_label"]
+    pub instance_label: RwLock<String>,
 }
 
 impl VssParams {
+    /// The three CV-in target params in slot order.
+    pub fn cv_targets(&self) -> [&EnumParam<CvTarget>; 3] {
+        [&self.cv1_target, &self.cv2_target, &self.cv3_target]
+    }
+
+    /// The three CV-in amount params in slot order.
+    pub fn cv_amounts(&self) -> [&FloatParam; 3] {
+        [&self.cv1_amount, &self.cv2_amount, &self.cv3_amount]
+    }
+
     /// The 16 step params in order, for the sequencer/GUI to index into without a 16-arm match.
     pub fn steps_array(&self) -> [&EnumParam<Vowel>; 16] {
         [
@@ -275,6 +322,21 @@ impl Default for VssParams {
             .with_smoother(SmoothingStyle::Linear(10.0))
             .with_unit(" dB")
             .with_value_to_string(formatters::v2s_f32_rounded(2)),
+
+            cv1_target: EnumParam::new("CV 1 Target", CvTarget::Off),
+            cv1_amount: FloatParam::new("CV 1 Amount", 0.0, FloatRange::Linear { min: -1.0, max: 1.0 })
+                .with_value_to_string(formatters::v2s_f32_rounded(2)),
+
+            cv2_target: EnumParam::new("CV 2 Target", CvTarget::Off),
+            cv2_amount: FloatParam::new("CV 2 Amount", 0.0, FloatRange::Linear { min: -1.0, max: 1.0 })
+                .with_value_to_string(formatters::v2s_f32_rounded(2)),
+
+            cv3_target: EnumParam::new("CV 3 Target", CvTarget::Off),
+            cv3_amount: FloatParam::new("CV 3 Amount", 0.0, FloatRange::Linear { min: -1.0, max: 1.0 })
+                .with_value_to_string(formatters::v2s_f32_rounded(2)),
+
+            cv_sources: RwLock::new(Default::default()),
+            instance_label: RwLock::new(String::new()),
         }
     }
 }

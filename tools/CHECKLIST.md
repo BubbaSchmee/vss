@@ -45,6 +45,22 @@ into slider text boxes may not receive keystrokes in Live).
     py -3.12 tools/analyze.py sessions/<file> --bpm 150 --rate 1/8 --steps 8
     ```
 
+## Patch bus (two instances)
+
+18. On a second MIDI track add a second VSS (it labels itself "VSS 2"; the first is "VSS 1").
+    Rename the first to "Lead" in its PATCH strip label box and press Enter.
+19. In VSS 2's PATCH strip, row 1: source "Lead · Step Gate", target Mix, amount about +1 (drag the
+    knob up). With Mix at 0 on VSS 2 and audio running, its row-1 LED pulses in time and the Mix
+    chops audibly with VSS 1's steps. Switch the target to Glide, then Formant: the effect follows.
+20. Row 2: source "Lead · Vowel", target Formant, amount about 0.5: VSS 2's formants follow VSS 1's
+    vowel sequence. Row 3: source "Lead · Step", target Resonance.
+21. Set a row's target to Off: that row's modulation stops at once. Set a source to None: the row
+    keeps its target and amount but applies nothing.
+22. Save the set, close, reopen: both labels, the three sources, targets and amounts per instance
+    are restored and the LEDs light again.
+23. Delete VSS 1: VSS 2's row 1 shows "Lead · Step Gate" dimmed and modulation stops. Undo (or add a
+    VSS and name it "Lead"): within a second the row rebinds without touching the strip.
+
 ## After a session, send back
 
 - `%LOCALAPPDATA%\VSS\vss-live.log`

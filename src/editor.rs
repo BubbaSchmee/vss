@@ -1,4 +1,4 @@
-//! egui editor per SPEC.md "GUI": a 760x560 rack panel drawn with the shared `rr-ui` kit.
+//! egui editor per SPEC.md "GUI": a 1064x560 rack panel drawn with the shared `rr-ui` kit.
 //!
 //! The whole UI is the function [`ui`] over the small [`Ctl`] trait, so the real editor can be
 //! rendered and tested outside a host (`examples/editor_preview.rs`, `tests/editor.rs`). The
@@ -14,12 +14,19 @@ use nih_plug::prelude::*;
 use nih_plug_egui::{create_egui_editor, egui, EguiState};
 use rr_ui::theme::metrics::{GAP, GROUP_CHROME_H, KNOB_D_LG};
 use rr_ui::widgets::{
-    caption, combo_stacked, group_ext, hslider_resp, knob_row, knob_styled, step_grid_ex, KnobResponse, KnobStyle,
+    caption, combo_stacked, group_ext, hslider_resp, knob_row, knob_styled, patch_strip, KnobResponse, KnobStyle, PatchRow, PATCH_H,
 };
 
-use crate::params::VssParams;
+use crate::bus::{Link, SLOTS};
+use crate::params::{VssParams, CV_TARGET_LABELS};
 
-pub const WINDOW: (u32, u32) = (760, 560);
+pub const WINDOW: (u32, u32) = (1064, 560);
+/// Width of the PATCH column (the fourth header column).
+const PATCH_W: f32 = 292.0;
+/// Source list refresh period, in egui seconds.
+const REFRESH_S: f64 = 0.25;
+pub const CV_TARGET_IDS: [&str; SLOTS] = ["cv1_target", "cv2_target", "cv3_target"];
+pub const CV_AMOUNT_IDS: [&str; SLOTS] = ["cv1_amount", "cv2_amount", "cv3_amount"];
 const RATES: [&str; 5] = ["1/4", "1/8", "1/8T", "1/16", "1/16T"];
 const VOWELS: [&str; 6] = ["A", "E", "I", "O", "U", "Hold"];
 const MAX_STEPS: usize = 16;
@@ -224,14 +231,125 @@ fn sequence(ui: &mut egui::Ui, ctl: &dyn Ctl) {
     drive(ui, ctl, "steps", r, |v| (v * (MAX_STEPS - 1) as f32).round() / (MAX_STEPS - 1) as f32);
 }
 
+/// The step grid, with cells stretched to fill the group. `rr_ui`'s `step_grid_ex` has a fixed
+/// 32 px cell (it only centres the grid), which leaves wide empty margins in the 1064 px window,
+/// so this draws the same grid look from `rr_ui`'s own constants and paint helpers with the cell
+/// width and height derived from the available size. Returns `(col, row)` when the pointer sets
+/// a different row on a column (click or drag).
+#[allow(clippy::too_many_arguments)]
+fn stretch_grid(
+    ui: &mut egui::Ui,
+    rows: &[&str],
+    cols: usize,
+    active_cols: usize,
+    current_col: Option<usize>,
+    cells: &[u8],
+    hold_row: Option<usize>,
+    height: f32,
+) -> Option<(usize, usize)> {
+    use egui::{pos2, vec2, Align2, CursorIcon, Rect, Sense, StrokeKind};
+    use rr_ui::paint;
+    use rr_ui::theme::{font, T};
+    use rr_ui::widgets::grid;
+
+    let (nc, nr) = (cols as f32, rows.len() as f32);
+    let w = ui.available_width();
+    let fixed_w = 2.0 * grid::PAD + grid::LABEL_W + grid::GAP + (nc - 1.0) * grid::GAP;
+    let fixed_h = 2.0 * grid::PAD + grid::HEADER_H + grid::GAP + (nr - 1.0) * grid::ROW_GAP;
+    let cw = ((w - fixed_w) / nc).max(grid::CELL);
+    let ch = ((height - fixed_h) / nr).max(grid::CELL);
+    let (bw, bh) = (fixed_w - 2.0 * grid::PAD + nc * cw, fixed_h - 2.0 * grid::PAD + nr * ch);
+    let (rect, resp) = ui.allocate_exact_size(vec2(w.max(bw + 2.0 * grid::PAD), height.max(bh + 2.0 * grid::PAD)), Sense::click_and_drag());
+    let origin = pos2(rect.center().x - bw / 2.0, rect.center().y - bh / 2.0);
+
+    let mut picked = None;
+    if resp.is_pointer_button_down_on() {
+        if let Some(pos) = resp.interact_pointer_pos() {
+            // Gaps belong to the nearest cell so there are no dead strips.
+            let x = pos.x - origin.x - (grid::LABEL_W + grid::GAP) + grid::GAP / 2.0;
+            let y = pos.y - origin.y - (grid::HEADER_H + grid::GAP) + grid::ROW_GAP / 2.0;
+            if x >= 0.0 && y >= 0.0 {
+                let (c, r) = ((x / (cw + grid::GAP)) as usize, (y / (ch + grid::ROW_GAP)) as usize);
+                if c < cols && r < rows.len() && cells.get(c).is_none_or(|&v| v as usize != r) {
+                    picked = Some((c, r));
+                }
+            }
+        }
+    }
+    if resp.hovered() {
+        ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
+    }
+    if !ui.is_rect_visible(rect) {
+        return picked;
+    }
+
+    let p = ui.painter();
+    paint::display_bg(p, rect);
+    let cell_rect = |c: usize, r: usize| {
+        Rect::from_min_size(
+            pos2(
+                origin.x + grid::LABEL_W + grid::GAP + c as f32 * (cw + grid::GAP),
+                origin.y + grid::HEADER_H + grid::GAP + r as f32 * (ch + grid::ROW_GAP),
+            ),
+            vec2(cw, ch),
+        )
+    };
+    let dim = |c: usize| if c >= active_cols { 0.35 } else { 1.0 };
+    let is_cur = |c: usize| Some(c) == current_col && c < active_cols;
+
+    for c in 0..cols {
+        let col = if is_cur(c) { T.accent } else { T.disp_caption };
+        let x = cell_rect(c, 0).center().x;
+        p.text(pos2(x, origin.y + grid::HEADER_H / 2.0), Align2::CENTER_CENTER, format!("{}", c + 1), font::label(11.0), col.gamma_multiply(dim(c)));
+    }
+    for (r, name) in rows.iter().enumerate() {
+        let y = cell_rect(0, r).center().y;
+        paint::tracked(p, pos2(origin.x, y), Align2::LEFT_CENTER, &name.to_uppercase(), font::strong(12.0), T.muted, 0.5);
+    }
+    // Pass 1: empty cells and the current-column wash.
+    for c in 0..cols {
+        for r in 0..rows.len() {
+            if cells.get(c).is_some_and(|&v| v as usize == r) {
+                continue;
+            }
+            let (rc, k) = (cell_rect(c, r), dim(c));
+            let (fill, stroke) = if is_cur(c) { (T.a(0.07), T.a(0.18)) } else { (T.cell_off, T.cell_off_stroke) };
+            p.rect_filled(rc, 4.0, fill.gamma_multiply(k));
+            p.rect_stroke(rc, 4.0, paint::st(1.0, stroke.gamma_multiply(k)), StrokeKind::Inside);
+        }
+    }
+    // Pass 2: selected cells (glow spills over neighbours), the playing one last.
+    let mut selected: Vec<(usize, usize)> =
+        (0..cols).filter_map(|c| cells.get(c).map(|&r| (c, r as usize))).filter(|&(_, r)| r < rows.len()).collect();
+    selected.sort_by_key(|&(c, _)| is_cur(c));
+    for (c, r) in selected {
+        let (rc, k) = (cell_rect(c, r), dim(c));
+        if is_cur(c) {
+            p.rect_filled(rc.expand(6.0), 8.0, T.a(0.22 * k));
+            p.rect_filled(rc.expand(2.0), 6.0, T.a(0.55 * k));
+            p.rect_filled(rc, 4.0, T.accent.gamma_multiply(k));
+        } else if hold_row == Some(r) {
+            paint::vgradient(p, rc.shrink2(vec2(0.0, 2.0)), T.a(0.16 * k), T.a(0.08 * k));
+            p.rect_filled(rc, 4.0, T.a(0.08 * k));
+            p.rect_stroke(rc, 4.0, paint::st(1.0, T.a(0.35 * k)), StrokeKind::Inside);
+        } else {
+            p.rect_stroke(rc.expand(2.0), 6.0, paint::st(1.0, T.a(0.18 * k)), StrokeKind::Inside);
+            p.rect_filled(rc, 4.0, T.a(0.20 * k));
+            p.rect_stroke(rc, 4.0, paint::st(1.0, T.a(0.55 * k)), StrokeKind::Inside);
+        }
+    }
+    picked
+}
+
 fn pattern(ui: &mut egui::Ui, ctl: &dyn Ctl, playhead: Option<usize>, body_h: f32) {
     let steps = 1 + (ctl.get01("steps") * (MAX_STEPS - 1) as f32).round() as usize;
     let cells: [u8; MAX_STEPS] = std::array::from_fn(|c| ctl.enum_idx(STEP_IDS[c]) as u8);
     let cur = playhead.map(|s| s.min(MAX_STEPS - 1));
     let cap = cur.map_or(String::new(), |c| format!("Step {} \u{b7} {}", c + 1, VOWELS[cells[c] as usize]));
-    group_ext(ui, egui::vec2(672.0, body_h), "Vowel pattern", |ui| caption(ui, &cap), |ui| {
+    let wide = ui.max_rect().width();
+    group_ext(ui, egui::vec2(wide, body_h), "Vowel pattern", |ui| caption(ui, &cap), |ui| {
         let h = body_h - GROUP_CHROME_H;
-        if let Some((c, r)) = step_grid_ex(ui, &VOWELS, MAX_STEPS, steps, cur, &cells, Some(5), Some(h)) {
+        if let Some((c, r)) = stretch_grid(ui, &VOWELS, MAX_STEPS, steps, cur, &cells, Some(5), h) {
             ctl.begin(STEP_IDS[c]);
             ctl.set_enum(STEP_IDS[c], r);
             ctl.end(STEP_IDS[c]);
@@ -239,9 +357,83 @@ fn pattern(ui: &mut egui::Ui, ctl: &dyn Ctl, playhead: Option<usize>, body_h: f3
     });
 }
 
+/// GUI-side view of the PATCH strip: the source list (refreshed about 4x/s from the bus) and each
+/// row's binding, resolved against it. Lives in the editor's user state.
+pub struct PatchView {
+    last_refresh: f64,
+    force: bool,
+    names: Vec<String>,
+    src: [Option<usize>; SLOTS],
+    lost: [Option<String>; SLOTS],
+    label: String,
+}
+
+impl Default for PatchView {
+    fn default() -> Self {
+        Self { last_refresh: f64::NEG_INFINITY, force: true, names: Vec::new(), src: [None; SLOTS], lost: [None, None, None], label: String::new() }
+    }
+}
+
+impl PatchView {
+    /// Every `REFRESH_S` of egui time (or right after the user picks a source): re-resolve lost
+    /// bindings, keep the heartbeat fresh, re-list the sources.
+    fn refresh(&mut self, ctx: &egui::Context, link: &Link) {
+        let now = ctx.input(|i| i.time);
+        if !self.force && now - self.last_refresh < REFRESH_S {
+            return;
+        }
+        self.last_refresh = now;
+        self.force = false;
+        link.refresh();
+        self.names = link.bus().list().iter().map(|s| s.persisted()).collect();
+        let saved = link.persisted_sources();
+        for i in 0..SLOTS {
+            self.src[i] = if saved[i].is_empty() || !link.is_bound(i) { None } else { self.names.iter().position(|n| *n == saved[i]) };
+            self.lost[i] = (!saved[i].is_empty() && self.src[i].is_none()).then(|| saved[i].clone());
+        }
+        if !ctx.wants_keyboard_input() {
+            self.label = link.label(); // not while the label is being typed
+        }
+    }
+}
+
+fn patch(ui: &mut egui::Ui, ctl: &dyn Ctl, link: &Link, view: &mut PatchView) {
+    let mut rows: Vec<PatchRow> = (0..SLOTS)
+        .map(|i| PatchRow {
+            sources: &view.names,
+            source_idx: view.src[i],
+            lost_name: view.lost[i].as_deref(),
+            targets: &CV_TARGET_LABELS,
+            target_idx: ctl.enum_idx(CV_TARGET_IDS[i]),
+            amount01: ctl.get01(CV_AMOUNT_IDS[i]),
+            activity01: link.activity(i),
+        })
+        .collect();
+    let mut label = view.label.clone();
+    let r = patch_strip(ui, &mut label, &mut rows);
+    if let Some(l) = r.label_changed {
+        link.set_label(&l);
+    }
+    view.label = label;
+    for (i, row) in r.rows.iter().enumerate() {
+        if let Some(pick) = row.source_changed {
+            let name = pick.map(|k| view.names[k].clone()).unwrap_or_default();
+            link.bind(i, &name);
+            view.force = true;
+        }
+        if let Some(k) = row.target_changed {
+            ctl.begin(CV_TARGET_IDS[i]);
+            ctl.set_enum(CV_TARGET_IDS[i], k);
+            ctl.end(CV_TARGET_IDS[i]);
+        }
+        drive(ui, ctl, CV_AMOUNT_IDS[i], row.amount, |v| v);
+    }
+}
+
 /// The complete editor UI. `playhead` is the sequencer's current step (it free-runs when the
 /// transport is stopped, so it is always meaningful).
-pub fn ui(ctx: &egui::Context, ctl: &dyn Ctl, playhead: Option<usize>) {
+pub fn ui(ctx: &egui::Context, ctl: &dyn Ctl, link: &Link, view: &mut PatchView, playhead: Option<usize>) {
+    view.refresh(ctx, link);
     egui::CentralPanel::default().frame(egui::Frame::NONE).show(ctx, |ui| {
         let status = format!("16-step formant \u{b7} v{}", env!("CARGO_PKG_VERSION"));
         rr_ui::panel::rack_panel(ui, "VSS", "Vowel Step Sequencer", &status, egui::vec2(168.0, 124.0), |hui, bui| {
@@ -249,6 +441,7 @@ pub fn ui(ctx: &egui::Context, ctl: &dyn Ctl, playhead: Option<usize>) {
             hui.horizontal_top(|ui| {
                 group_ext(ui, egui::vec2(376.0, 124.0), "Voice", |_| {}, |ui| voice(ui, ctl));
                 group_ext(ui, egui::vec2(100.0, 124.0), "Sequence", |_| {}, |ui| sequence(ui, ctl));
+                ui.allocate_ui(egui::vec2(PATCH_W, PATCH_H), |ui| patch(ui, ctl, link, view));
             });
             let body_h = bui.max_rect().height();
             pattern(bui, ctl, playhead, body_h);
@@ -256,16 +449,16 @@ pub fn ui(ctx: &egui::Context, ctl: &dyn Ctl, playhead: Option<usize>) {
     });
 }
 
-pub fn create(params: Arc<VssParams>, current_step: Arc<AtomicUsize>) -> Option<Box<dyn Editor>> {
+pub fn create(params: Arc<VssParams>, current_step: Arc<AtomicUsize>, link: Arc<Link>) -> Option<Box<dyn Editor>> {
     let map = ptr_map(&params);
     create_egui_editor(
         EguiState::from_size(WINDOW.0, WINDOW.1),
-        (),
+        PatchView::default(),
         |ctx, _| rr_ui::theme::apply(ctx),
-        move |ctx, setter, _state| {
+        move |ctx, setter, view| {
             // `params` is held here so the ParamPtrs in `map` stay valid for the editor's lifetime.
             let _keep = &params;
-            ui(ctx, &PluginCtl { map: &map, setter }, Some(current_step.load(Ordering::Relaxed)));
+            ui(ctx, &PluginCtl { map: &map, setter }, &link, view, Some(current_step.load(Ordering::Relaxed)));
             ctx.request_repaint_after(std::time::Duration::from_millis(33));
         },
     )

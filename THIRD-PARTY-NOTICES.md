@@ -222,7 +222,7 @@ GPLv2-only work, VSS as a whole is distributed under **GPL-3.0-or-later**
 ## rr-ui
 
 License: GPL-3.0-or-later. The shared egui widget kit of the riddim-rack project
-(https://github.com/BubbaSchmee/riddim-rack), linked as a git dependency (rev 8c9925b).
+(https://github.com/BubbaSchmee/riddim-rack), linked as a git dependency (rev e6511ba).
 It embeds the two fonts below.
 
 ## Barlow (embedded in rr-ui)
@@ -425,4 +425,39 @@ DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
 OTHER DEALINGS IN THE FONT SOFTWARE.
 
+```
+
+## rr-bus
+
+License: GPL-3.0-or-later. The lock-free inter-device modulation bus of the riddim-rack project
+(https://github.com/BubbaSchmee/riddim-rack), linked as a git dependency (rev e6511ba).
+On Windows it uses the `windows-sys` crate below for the named shared-memory mapping.
+
+## windows-sys
+
+License: MIT OR Apache-2.0 (version 0.59.0, pulled in by rr-bus). The MIT text, copied from the
+crate's license-mit file:
+
+```
+    MIT License
+
+    Copyright (c) Microsoft Corporation.
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy
+    of this software and associated documentation files (the "Software"), to deal
+    in the Software without restriction, including without limitation the rights
+    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+    copies of the Software, and to permit persons to whom the Software is
+    furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in all
+    copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+    SOFTWARE
 ```

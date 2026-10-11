@@ -6,7 +6,9 @@ any bass "talks" in riddim/dubstep patterns without automation lanes.
 
 **Status: pre-alpha, Windows only.**
 
-The GUI now uses the shared `rr-ui` kit (Riddim Rack look); window 760×560.
+The GUI uses the shared `rr-ui` kit (Riddim Rack look); window 1064×560. VSS joins the Riddim Rack
+modulation bus (`rr-bus`): it publishes Step Gate, Vowel and Step, and has three CV-in slots in the
+PATCH strip that modulate Formant Shift, Resonance, Drive, Glide or Mix.
 
 Copyright (C) 2026 VSS Open Source contributors
 

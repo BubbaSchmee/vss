@@ -113,7 +113,7 @@ Guard against denormals; reset filter state on `reset()`.
 Panics are captured by nih_plug's hook into the same NIH_LOG file.
 
 ## GUI (nih_plug_egui + rr-ui)
-- Window 760×560, fixed size, rr-ui rack-panel look. Nameplate "VSS" / "VOWEL STEP SEQUENCER" / status
+- Window 1064×560, fixed size, rr-ui rack-panel look. Nameplate "VSS" / "VOWEL STEP SEQUENCER" / status
   "16-step formant · v{version}". `rr_ui::theme::apply` once in the editor build closure.
 - The UI is one function over a small `Ctl` trait (`src/editor.rs`); the plugin implements it over its
   params + `ParamSetter`, `examples/editor_preview.rs` renders the real function to
@@ -124,6 +124,15 @@ Panics are captured by nih_plug's hook into the same NIH_LOG file.
   vowel via begin/set/end. Columns ≥ `steps` are dimmed. Current step highlighted from the shared
   atomic (it free-runs when stopped, so it is always shown). Knob drags are begin/set/end gestures,
   double-click resets to default. Repaint continuously while open (`ctx.request_repaint_after(33 ms)`).
+- Vowel Pattern cells stretch to fill the whole group (`rr_ui::step_grid_ex` only centres a fixed
+  32 px grid, so `src/editor.rs` draws the same grid with a cell size derived from the available
+  size). Header row, left to right: nameplate, Voice, Sequence, then the PATCH column.
+- PATCH column (RR-BUS, riddim-rack SPEC "GUI (rr-ui): PATCH strip"): the fourth header column, 292 px
+  wide and 124 px tall: editable instance label and three rows of `source combo | target combo |
+  amount knob | activity LED`. Targets: Off, Formant, Reson., Drive, Glide, Mix (the `cvN_target`
+  enum; its parameter names are the long forms). The source list comes from `bus.list()` and lost
+  bindings re-resolve on one ~4×/s egui-time timer; the LED shows the abs of the last value the audio
+  thread read. Publishes `Step Gate`, `Vowel`, `Step`; see `src/bus.rs`.
 
 ## Verification (must all pass before handoff)
 1. `cargo test` — tests use std only:

@@ -4,11 +4,16 @@
 
 use eframe::egui::{self, vec2, ViewportCommand};
 use std::sync::Arc;
-use vss::editor::{self, MapCtl, WINDOW};
-use vss::params::VssParams;
+use rr_bus::{Bus, Kind};
+use vss::bus::{Link, Modulator};
+use vss::editor::{self, Ctl, MapCtl, PatchView, WINDOW};
+use vss::params::{CvTarget, VssParams};
 
 struct App {
     ctl: MapCtl,
+    link: Arc<Link>,
+    view: PatchView,
+    _keep: Box<dyn std::any::Any>,
     frame: u32,
     asked: bool,
 }
@@ -23,7 +28,7 @@ impl eframe::App for App {
             ctx.send_viewport_cmd(ViewportCommand::InnerSize(vec2(w, h) / native));
         }
         self.frame += 1;
-        editor::ui(ctx, &self.ctl, Some(5));
+        editor::ui(ctx, &self.ctl, &self.link, &mut self.view, Some(5));
 
         let size = ctx.screen_rect().size();
         let ready = (size.x - w).abs() < 1.0 && (size.y - h).abs() < 1.0 && self.frame >= 3;
@@ -67,7 +72,40 @@ fn main() -> eframe::Result {
         Box::new(|cc| {
             // Fonts apply on the next pass, so install them at creation, as the plugin does.
             rr_ui::theme::apply(&cc.egui_ctx);
-            Ok(Box::new(App { ctl: MapCtl::new(Arc::new(VssParams::default())), frame: 0, asked: false }))
+            let (ctl, link, keep) = demo();
+            Ok(Box::new(App { ctl, link, view: PatchView::default(), _keep: keep, frame: 0, asked: false }))
         }),
     )
+}
+
+/// The same patch-bay demo data as the rr-ui kit preview: row 1 follows this device's own Step
+/// Gate, row 2 a live source from another device, row 3 a lost one.
+fn demo() -> (MapCtl, Arc<Link>, Box<dyn std::any::Any>) {
+    let params = Arc::new(VssParams::default());
+    let ctl = MapCtl::new(params.clone());
+    let link = Link::new(params.clone());
+    let bus = Bus::open_named(&format!("Local\\VssEditorPreview.{}", std::process::id()));
+    // Two other devices publishing, so the source combo has entries.
+    let gts1 = bus.register("GTS");
+    let mod_a = gts1.publish("Mod A", Kind::Bipolar);
+    let gts2 = bus.register("GTS");
+    let mod_b = gts2.publish("Mod B", Kind::Bipolar);
+    mod_a.set(0.35);
+    mod_b.set(-0.5);
+
+    let mut modulator = Modulator::new(link.clone());
+    modulator.initialize(bus.clone());
+    link.set_label("Lead bass");
+    *params.cv_sources.write().unwrap() =
+        ["Lead bass \u{b7} Step Gate".into(), "GTS 1 \u{b7} Mod A".into(), "GTS 3 \u{b7} Mod A".into()];
+    link.bind_persisted();
+    for (i, (t, a)) in [(CvTarget::FormantShift, 0.78), (CvTarget::Resonance, 0.35), (CvTarget::Drive, 0.5)].into_iter().enumerate() {
+        ctl.set_enum(vss::editor::CV_TARGET_IDS[i], t as usize);
+        ctl.set01(vss::editor::CV_AMOUNT_IDS[i], a);
+    }
+    // One block so the activity LEDs have something to show.
+    modulator.publish((1.0, 0.25, 0.4));
+    modulator.begin_block([CvTarget::FormantShift, CvTarget::Resonance, CvTarget::Drive], [1.0; 3], 48_000.0);
+    ctl.log.borrow_mut().clear();
+    (ctl, link, Box::new((bus, gts1, gts2, mod_a, mod_b, modulator)))
 }

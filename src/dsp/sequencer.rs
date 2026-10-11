@@ -39,6 +39,8 @@ pub struct Sequencer {
     /// Pattern length in effect; a new `steps` value is latched only at a step boundary.
     steps_active: i64,
     current: usize,
+    /// Position inside the current step as `(offset in pair, inner boundary, odd)`, step units.
+    step_pos: (f64, f64, bool),
     /// Host loop `(start, end)` in beats, only while playing with the block start before `end`.
     loop_range: Option<(f64, f64)>,
 }
@@ -55,6 +57,7 @@ impl Sequencer {
             steps_active: 1,
             current: 0,
             loop_range: None,
+            step_pos: (0.0, 1.0, false),
         }
     }
 
@@ -122,7 +125,9 @@ impl Sequencer {
         let s = beat * steps_per_beat + BOUNDARY_EPS;
         let pair = (s * 0.5).floor();
         let offset = s - 2.0 * pair;
-        let odd = offset >= 1.0 + swing.clamp(0.0, 1.0) as f64 / 3.0;
+        let inner = 1.0 + swing.clamp(0.0, 1.0) as f64 / 3.0;
+        let odd = offset >= inner;
+        self.step_pos = (offset, inner, odd);
         let abs_step = 2 * pair as i64 + odd as i64;
 
         if self.last_abs_step != Some(abs_step) {
@@ -141,6 +146,19 @@ impl Sequencer {
     /// Beat position of the most recently evaluated sample.
     pub fn beat(&self) -> f64 {
         self.beat
+    }
+
+    /// Pattern length in effect (latched at the last step boundary).
+    pub fn steps_active(&self) -> usize {
+        self.steps_active as usize
+    }
+
+    /// Progress 0..1 through the step of the most recently evaluated sample (swing-aware:
+    /// the inner boundary of a pair sits at `1 + swing/3` step units).
+    pub fn step_phase(&self) -> f32 {
+        let (offset, inner, odd) = self.step_pos;
+        let (start, len) = if odd { (inner, 2.0 - inner) } else { (0.0, inner) };
+        ((offset - start) / len).clamp(0.0, 1.0) as f32
     }
 
     fn anchor(&mut self, beat: f64) {

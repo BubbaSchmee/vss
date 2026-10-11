@@ -265,6 +265,23 @@ impl Engine {
         self.sequencer.current()
     }
 
+    /// The signals published on the bus, read once per block after processing:
+    /// `(Step Gate, Vowel, Step)`. Gate is 1 for the first half of the current step; Vowel is
+    /// A 0, E .25, I .5, O .75, U 1 of the resolved target (so Hold keeps the last value); Step
+    /// is `step_index / steps`.
+    pub fn bus_signals(&self) -> (f32, f32, f32) {
+        let gate = if self.sequencer.step_phase() < 0.5 { 1.0 } else { 0.0 };
+        let vowel = match self.target {
+            None | Some(Vowel::A) | Some(Vowel::Hold) => 0.0,
+            Some(Vowel::E) => 0.25,
+            Some(Vowel::I) => 0.5,
+            Some(Vowel::O) => 0.75,
+            Some(Vowel::U) => 1.0,
+        };
+        let step = self.sequencer.current() as f32 / self.sequencer.steps_active().max(1) as f32;
+        (gate, vowel, step)
+    }
+
     fn retarget(&mut self, step: usize) {
         let vowel = resolve_vowel(&self.block.pattern, step);
         if self.target != Some(vowel) {

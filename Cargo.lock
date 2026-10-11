@@ -2989,9 +2989,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "19b30a45b0cd0bcca8037f3d0dc3421eaf95327a17cad11964fb8179b4fc4832"
 
 [[package]]
+name = "rr-bus"
+version = "0.1.0"
+source = "git+https://github.com/BubbaSchmee/riddim-rack.git?rev=e6511ba#e6511baeac1d88b1ade9da9492d067d7470a7bbc"
+dependencies = [
+ "windows-sys 0.59.0",
+]
+
+[[package]]
 name = "rr-ui"
 version = "0.1.0"
-source = "git+https://github.com/BubbaSchmee/riddim-rack.git?rev=8c9925b#8c9925ba746477ff43b8dc26d4a14451d889757d"
+source = "git+https://github.com/BubbaSchmee/riddim-rack.git?rev=e6511ba#e6511baeac1d88b1ade9da9492d067d7470a7bbc"
 dependencies = [
  "egui",
 ]
@@ -3762,6 +3770,7 @@ dependencies = [
  "nih_plug",
  "nih_plug_egui",
  "png 0.17.16",
+ "rr-bus",
  "rr-ui",
 ]
 
