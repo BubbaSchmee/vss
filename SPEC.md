@@ -10,7 +10,7 @@ only when the orchestrator says so.
 ## Stack (fixed)
 - Rust stable MSVC (installed at `%USERPROFILE%\.cargo\bin`; add to PATH in every shell).
 - `nih_plug` from git `https://github.com/robbert-vdh/nih-plug.git`, feature `assert_process_allocs`.
-- GUI: `nih_plug_egui` (same git repo). Functional look, dark theme. No custom-drawn knobs.
+- GUI: `nih_plug_egui` (same git repo) with the shared `rr-ui` widget kit (riddim-rack repo, design contract `docs/design/DESIGN.md` there).
 - Bundling: `nih_plug_xtask` via `cargo xtask bundle vss --release` → `target/bundled/VSS.vst3`.
   Also emit CLAP (free with nih-plug). VST3 is the deliverable.
 - License GPL-3.0-or-later (required by VST3 terms). Vendor "VSS Open Source", url github.com/BubbaSchmee/vss.
@@ -112,14 +112,18 @@ Guard against denormals; reset filter state on `reset()`.
   once in initialize, store a bool). Normal sessions must do no per-step I/O on the audio thread.
 Panics are captured by nih_plug's hook into the same NIH_LOG file.
 
-## GUI (nih_plug_egui)
-- Window 760×380, fixed size. Dark theme.
-- Top row: ParamSlider for Formant Shift, Resonance, Drive, Glide, Swing, Mix, Output; Rate combo; Steps slider.
-- Grid: 16 columns × 6 rows (A E I O U Hold). Clicking a cell sets that step's vowel via
-  `setter.begin_set_parameter / set_parameter / end_set_parameter`. Columns ≥ `steps` drawn dimmed.
-  Current step column highlighted using the shared atomic. Repaint continuously while open
-  (`ctx.request_repaint_after(33 ms)`).
-- Header: "VSS — Vowel Step Sequencer" + version.
+## GUI (nih_plug_egui + rr-ui)
+- Window 760×560, fixed size, rr-ui rack-panel look. Nameplate "VSS" / "VOWEL STEP SEQUENCER" / status
+  "16-step formant · v{version}". `rr_ui::theme::apply` once in the editor build closure.
+- The UI is one function over a small `Ctl` trait (`src/editor.rs`); the plugin implements it over its
+  params + `ParamSetter`, `examples/editor_preview.rs` renders the real function to
+  `docs/design/preview-vss-editor.png`, and `tests/editor.rs` checks every param id is bound.
+- Voice group: knobs Formant Shift (bipolar), Resonance, Drive, Glide, Swing, Mix, Output with the
+  params' own readouts. Sequence group: Rate combo and a quantised Steps slider (1..16).
+- Vowel Pattern group: 16 columns × 6 rows (A E I O U Hold) step grid. Clicking a cell sets that step's
+  vowel via begin/set/end. Columns ≥ `steps` are dimmed. Current step highlighted from the shared
+  atomic (it free-runs when stopped, so it is always shown). Knob drags are begin/set/end gestures,
+  double-click resets to default. Repaint continuously while open (`ctx.request_repaint_after(33 ms)`).
 
 ## Verification (must all pass before handoff)
 1. `cargo test` — tests use std only:

@@ -2,7 +2,7 @@
 //! 16-step sequencer. See SPEC.md for the full contract.
 
 pub mod dsp;
-mod editor;
+pub mod editor;
 pub mod params;
 
 use nih_plug::prelude::*;

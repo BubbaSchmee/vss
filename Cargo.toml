@@ -18,6 +18,12 @@ crate-type = ["cdylib", "lib"]
 [dependencies]
 nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", features = ["assert_process_allocs"] }
 nih_plug_egui = { git = "https://github.com/robbert-vdh/nih-plug.git" }
+rr-ui = { git = "https://github.com/BubbaSchmee/riddim-rack.git", rev = "8c9925b" }
+
+[dev-dependencies]
+# Offscreen editor preview (examples/editor_preview.rs); same pins as the rr-ui preview.
+eframe = "=0.31.1"
+png = "0.17"
 
 [profile.release]
 lto = "thin"

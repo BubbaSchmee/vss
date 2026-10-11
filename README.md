@@ -6,6 +6,8 @@ any bass "talks" in riddim/dubstep patterns without automation lanes.
 
 **Status: pre-alpha, Windows only.**
 
+The GUI now uses the shared `rr-ui` kit (Riddim Rack look); window 760×560.
+
 Copyright (C) 2026 VSS Open Source contributors
 
 This program is free software: you can redistribute it and/or modify it
